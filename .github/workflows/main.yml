@@ -20,30 +20,74 @@ jobs:
       - name: Installer Android SDK
         uses: android-actions/setup-android@v4
 
+      - name: Installer Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
       - name: Décompresser le projet CRVT
         run: |
+          rm -rf crvt
           mkdir -p crvt
           unzip -o CRVT_APK_CLOUD_BUILD.zip -d crvt
 
       - name: Trouver le projet Android
         run: |
-          echo "Recherche du projet Android..."
-          find crvt -name "gradlew" -o -name "settings.gradle" -o -name "settings.gradle.kts"
+          echo "=== CONTENU DU ZIP ==="
+          find crvt -maxdepth 4 -type f | head -200
 
-      - name: Construire l'APK
-        run: |
-          GRADLEW=$(find crvt -name "gradlew" | head -n 1)
+          echo "=== RECHERCHE DU PROJET ANDROID ==="
 
-          if [ -z "$GRADLEW" ]; then
-            echo "ERREUR : gradlew introuvable dans le projet."
+          SETTINGS=$(find crvt -type f \( \
+            -name "settings.gradle" -o \
+            -name "settings.gradle.kts" \
+          \) | head -n 1)
+
+          BUILD=$(find crvt -type f \( \
+            -name "build.gradle" -o \
+            -name "build.gradle.kts" \
+          \) | head -n 1)
+
+          GRADLEW=$(find crvt -type f -name "gradlew" | head -n 1)
+
+          echo "settings.gradle : $SETTINGS"
+          echo "build.gradle    : $BUILD"
+          echo "gradlew         : $GRADLEW"
+
+          if [ -n "$SETTINGS" ]; then
+            PROJECT_DIR=$(dirname "$SETTINGS")
+          elif [ -n "$BUILD" ]; then
+            PROJECT_DIR=$(dirname "$BUILD")
+          else
+            echo "ERREUR : aucun projet Gradle trouvé dans le ZIP."
             exit 1
           fi
 
-          PROJECT_DIR=$(dirname "$GRADLEW")
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Projet Android trouvé dans : $PROJECT_DIR"
+
+      - name: Construire l'APK
+        run: |
           cd "$PROJECT_DIR"
 
-          chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          echo "Construction depuis : $(pwd)"
+
+          GRADLEW=$(find . -maxdepth 2 -type f -name "gradlew" | head -n 1)
+
+          if [ -n "$GRADLEW" ]; then
+            echo "Gradle Wrapper trouvé : $GRADLEW"
+            chmod +x "$GRADLEW"
+            "$GRADLEW" assembleDebug --no-daemon
+          else
+            echo "Pas de gradlew."
+            echo "Utilisation de Gradle installé par GitHub Actions."
+            gradle assembleDebug --no-daemon
+          fi
+
+      - name: Vérifier l'APK
+        run: |
+          echo "=== APK PRODUITS ==="
+          find crvt -type f -name "*.apk" -print
 
       - name: Récupérer l'APK
         uses: actions/upload-artifact@v4
