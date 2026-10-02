@@ -36,6 +36,9 @@ jobs:
       - name: Appliquer les corrections CRVT
         run: python3 crvt_fixes.py
 
+      - name: Corriger le script du rapport CRVT
+        run: python3 crvt_html_syntax_fix.py
+
       - name: Activer AndroidX et Kotlin
         run: |
           printf '%s\n' \
