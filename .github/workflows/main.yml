@@ -39,6 +39,17 @@ jobs:
       - name: Corriger le script du rapport CRVT
         run: python3 crvt_html_syntax_fix.py
 
+      - name: Corriger le type WebView Android
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('crvt/app/src/main/java/fr/crvt/app/MainActivity.java')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace('v.evaluateJavascript(', '((WebView)v).evaluateJavascript(')
+          p.write_text(s, encoding='utf-8')
+          print('Correction WebView appliquée')
+          PY
+
       - name: Activer AndroidX et Kotlin
         run: |
           printf '%s\n' \
