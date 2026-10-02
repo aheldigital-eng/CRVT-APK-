@@ -34,6 +34,13 @@ jobs:
           mkdir -p crvt
           unzip -o CRVT_APK_CLOUD_BUILD.zip -d crvt
 
+      - name: Activer AndroidX
+        run: |
+          printf '%s\n' \
+            'android.useAndroidX=true' \
+            'android.enableJetifier=true' \
+            > crvt/gradle.properties
+
       - name: Trouver le projet Android
         run: |
           echo "=== CONTENU DU ZIP ==="
