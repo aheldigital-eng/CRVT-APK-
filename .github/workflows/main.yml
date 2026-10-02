@@ -34,19 +34,45 @@ jobs:
           mkdir -p crvt
           unzip -o CRVT_APK_CLOUD_BUILD.zip -d crvt
 
-      - name: Inspecter MainActivity
+      - name: Corriger le sélecteur photo Android natif
         run: |
-          echo "=== MainActivity.java ==="
-          sed -n '1,260p' crvt/app/src/main/java/fr/crvt/app/MainActivity.java
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('crvt/app/src/main/java/fr/crvt/app/MainActivity.java')
+          s = p.read_text()
+          s = s.replace('import android.app.Activity;\n', 'import android.app.Activity;\nimport android.content.ActivityNotFoundException;\nimport android.content.Intent;\nimport android.net.Uri;\n')
+          s = s.replace('import android.webkit.WebChromeClient;\n', 'import android.webkit.WebChromeClient;\nimport android.webkit.ValueCallback;\n')
+          s = s.replace('    private static final int CAMERA_REQUEST = 1001;\n', '    private static final int CAMERA_REQUEST = 1001;\n    private static final int FILE_CHOOSER_REQUEST = 1002;\n    private ValueCallback<Uri[]> filePathCallback;\n')
+          old = '        webView.setWebChromeClient(new WebChromeClient());'
+          new = '''        webView.setWebChromeClient(new WebChromeClient() {\n            @Override\n            public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {\n                if (filePathCallback != null) {\n                    filePathCallback.onReceiveValue(null);\n                }\n                filePathCallback = callback;\n                try {\n                    Intent intent = params.createIntent();\n                    startActivityForResult(intent, FILE_CHOOSER_REQUEST);\n                    return true;\n                } catch (ActivityNotFoundException e) {\n                    filePathCallback = null;\n                    return false;\n                }\n            }\n        });'''
+          if old not in s:
+              raise SystemExit('WebChromeClient target introuvable')
+          s = s.replace(old, new)
+          marker = '    @Override\n    public void onBackPressed() {'
+          result = '''    @Override\n    protected void onActivityResult(int requestCode, int resultCode, Intent data) {\n        super.onActivityResult(requestCode, resultCode, data);\n        if (requestCode == FILE_CHOOSER_REQUEST) {\n            if (filePathCallback == null) return;\n            Uri[] results = null;\n            if (resultCode == RESULT_OK && data != null) {\n                if (data.getData() != null) {\n                    results = new Uri[]{data.getData()};\n                } else if (data.getClipData() != null) {\n                    int count = data.getClipData().getItemCount();\n                    results = new Uri[count];\n                    for (int i = 0; i < count; i++) {\n                        results[i] = data.getClipData().getItemAt(i).getUri();\n                    }\n                }\n            }\n            filePathCallback.onReceiveValue(results);\n            filePathCallback = null;\n        }\n    }\n\n'''
+          if marker not in s:
+              raise SystemExit('onBackPressed target introuvable')
+          s = s.replace(marker, result + marker)
+          p.write_text(s)
+          print('Sélecteur photo Android natif corrigé.')
+          PY
 
-      - name: Corriger l'interface mobile CRVT
+      - name: Corriger les boutons photo CRVT
         run: |
-          find crvt -type f -name 'index.html' -print0 | while IFS= read -r -d '' f; do
-            sed -i 's/#quickNav{position:fixed;top:0;/#quickNav{position:fixed;top:env(safe-area-inset-top,0px);/' "$f"
-            sed -i 's/body{padding-top:54px}/body{padding-top:calc(54px + env(safe-area-inset-top,0px))}/' "$f"
-            sed -i 's/\.photoBtn input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}/.photoBtn{position:relative;z-index:30;touch-action:manipulation;-webkit-tap-highlight-color:transparent}.photoBtn input{position:absolute;inset:0;width:100%;height:100%;opacity:0.01;z-index:31;cursor:pointer;pointer-events:auto}/' "$f"
-            echo "Interface mobile corrigée : $f"
-          done
+          python3 - <<'PY'
+          from pathlib import Path
+          for path in Path('crvt').rglob('index.html'):
+              s = path.read_text()
+              s = s.replace('''<label class="btn primary photoBtn">📷 Prendre une photo\n    <input type="file" accept="image/*" capture="environment" data-photo="${sec}">\n  </label>\n  <label class="btn secondary photoBtn">🖼️ Choisir dans la galerie\n    <input type="file" accept="image/*" data-photo="${sec}">\n  </label>''', '''<button type="button" class="btn primary photoBtn" onclick="choosePhoto('${sec}',true)">📷 Prendre une photo</button>\n  <button type="button" class="btn secondary photoBtn" onclick="choosePhoto('${sec}',false)">🖼️ Choisir dans la galerie</button>''')
+              anchor = 'function bindPhotoInputs(){'
+              helper = '''function choosePhoto(sec,camera){\n  const input=document.createElement('input');\n  input.type='file';\n  input.accept='image/*';\n  if(camera) input.setAttribute('capture','environment');\n  input.style.position='fixed';\n  input.style.left='-9999px';\n  input.style.width='1px';\n  input.style.height='1px';\n  input.onchange=()=>{if(input.files && input.files[0]) addPhoto(input.files[0],sec); input.remove();};\n  document.body.appendChild(input);\n  input.click();\n}\n\n'''
+              if anchor in s and 'function choosePhoto(sec,camera)' not in s:
+                  s = s.replace(anchor, helper + anchor, 1)
+              s = s.replace('''.photoBtn{position:relative;overflow:hidden;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}.photoBtn{position:relative;z-index:30;touch-action:manipulation;-webkit-tap-highlight-color:transparent}.photoBtn input{position:absolute;inset:0;width:100%;height:100%;opacity:0.01;z-index:31;cursor:pointer;pointer-events:auto}''', '''.photoBtn{position:relative;z-index:30;touch-action:manipulation;-webkit-tap-highlight-color:transparent;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}''')
+              s = s.replace('''#quickNav{position:fixed;top:env(safe-area-inset-top,0px);left:0;right:0;z-index:250;''', '''#quickNav{position:fixed;top:env(safe-area-inset-top,0px);left:0;right:0;z-index:120;''')
+              path.write_text(s)
+              print('Boutons photo corrigés :', path)
+          PY
 
       - name: Activer AndroidX et corriger Kotlin
         run: |
@@ -82,7 +108,6 @@ jobs:
             }
           }
           EOF
-          echo "Exclusion des anciens kotlin-stdlib-jdk7/jdk8 pour éviter les classes dupliquées"
           gradle -I /tmp/crvt-kotlin-fix.gradle assembleDebug --no-daemon --refresh-dependencies
 
       - name: Vérifier l'APK
