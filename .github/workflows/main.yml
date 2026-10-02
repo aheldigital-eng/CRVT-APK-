@@ -34,35 +34,33 @@ jobs:
           mkdir -p crvt
           unzip -o CRVT_APK_CLOUD_BUILD.zip -d crvt
 
-      - name: Activer AndroidX
+      - name: Activer AndroidX et préparer Kotlin
         run: |
           printf '%s\n' \
             'android.useAndroidX=true' \
             'android.enableJetifier=true' \
             > crvt/gradle.properties
 
+          cat > crvt/crvt-kotlin-fix.gradle <<'EOF'
+          allprojects {
+            configurations.configureEach {
+              resolutionStrategy.eachDependency { details ->
+                if (details.requested.group == 'org.jetbrains.kotlin') {
+                  details.useVersion('1.8.22')
+                  details.because('Uniformiser les dépendances Kotlin pour éviter les classes dupliquées')
+                }
+              }
+            }
+          }
+          EOF
+
       - name: Trouver le projet Android
         run: |
           echo "=== CONTENU DU ZIP ==="
           find crvt -maxdepth 4 -type f | head -200
 
-          echo "=== RECHERCHE DU PROJET ANDROID ==="
-
-          SETTINGS=$(find crvt -type f \( \
-            -name "settings.gradle" -o \
-            -name "settings.gradle.kts" \
-          \) | head -n 1)
-
-          BUILD=$(find crvt -type f \( \
-            -name "build.gradle" -o \
-            -name "build.gradle.kts" \
-          \) | head -n 1)
-
-          GRADLEW=$(find crvt -type f -name "gradlew" | head -n 1)
-
-          echo "settings.gradle : $SETTINGS"
-          echo "build.gradle    : $BUILD"
-          echo "gradlew         : $GRADLEW"
+          SETTINGS=$(find crvt -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" \) | head -n 1)
+          BUILD=$(find crvt -type f \( -name "build.gradle" -o -name "build.gradle.kts" \) | head -n 1)
 
           if [ -n "$SETTINGS" ]; then
             PROJECT_DIR=$(dirname "$SETTINGS")
@@ -79,19 +77,15 @@ jobs:
       - name: Construire l'APK
         run: |
           cd "$PROJECT_DIR"
-
           echo "Construction depuis : $(pwd)"
 
           GRADLEW=$(find . -maxdepth 2 -type f -name "gradlew" | head -n 1)
 
           if [ -n "$GRADLEW" ]; then
-            echo "Gradle Wrapper trouvé : $GRADLEW"
             chmod +x "$GRADLEW"
-            "$GRADLEW" assembleDebug --no-daemon
+            "$GRADLEW" -I crvt-kotlin-fix.gradle assembleDebug --no-daemon --stacktrace
           else
-            echo "Pas de gradlew."
-            echo "Utilisation de Gradle installé par GitHub Actions."
-            gradle assembleDebug --no-daemon
+            gradle -I crvt-kotlin-fix.gradle assembleDebug --no-daemon --stacktrace
           fi
 
       - name: Vérifier l'APK
