@@ -44,17 +44,14 @@ jobs:
           s = s.replace('import android.webkit.WebChromeClient;\n', 'import android.webkit.WebChromeClient;\nimport android.webkit.ValueCallback;\n')
           s = s.replace('    private static final int CAMERA_REQUEST = 1001;\n', '    private static final int CAMERA_REQUEST = 1001;\n    private static final int FILE_CHOOSER_REQUEST = 1002;\n    private ValueCallback<Uri[]> filePathCallback;\n')
           old = '        webView.setWebChromeClient(new WebChromeClient());'
-          new = '''        webView.setWebChromeClient(new WebChromeClient() {\n            @Override\n            public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {\n                if (filePathCallback != null) {\n                    filePathCallback.onReceiveValue(null);\n                }\n                filePathCallback = callback;\n                try {\n                    Intent intent = params.createIntent();\n                    startActivityForResult(intent, FILE_CHOOSER_REQUEST);\n                    return true;\n                } catch (ActivityNotFoundException e) {\n                    filePathCallback = null;\n                    return false;\n                }\n            }\n        });'''
-          if old not in s:
-              raise SystemExit('WebChromeClient target introuvable')
-          s = s.replace(old, new)
+          new = '''        webView.setWebChromeClient(new WebChromeClient() {\n            @Override\n            public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {\n                if (filePathCallback != null) filePathCallback.onReceiveValue(null);\n                filePathCallback = callback;\n                try {\n                    Intent intent = params.createIntent();\n                    startActivityForResult(intent, FILE_CHOOSER_REQUEST);\n                    return true;\n                } catch (ActivityNotFoundException e) {\n                    filePathCallback = null;\n                    return false;\n                }\n            }\n        });'''
+          if old in s:
+              s = s.replace(old, new)
           marker = '    @Override\n    public void onBackPressed() {'
-          result = '''    @Override\n    protected void onActivityResult(int requestCode, int resultCode, Intent data) {\n        super.onActivityResult(requestCode, resultCode, data);\n        if (requestCode == FILE_CHOOSER_REQUEST) {\n            if (filePathCallback == null) return;\n            Uri[] results = null;\n            if (resultCode == RESULT_OK && data != null) {\n                if (data.getData() != null) {\n                    results = new Uri[]{data.getData()};\n                } else if (data.getClipData() != null) {\n                    int count = data.getClipData().getItemCount();\n                    results = new Uri[count];\n                    for (int i = 0; i < count; i++) {\n                        results[i] = data.getClipData().getItemAt(i).getUri();\n                    }\n                }\n            }\n            filePathCallback.onReceiveValue(results);\n            filePathCallback = null;\n        }\n    }\n\n'''
-          if marker not in s:
-              raise SystemExit('onBackPressed target introuvable')
-          s = s.replace(marker, result + marker)
+          result = '''    @Override\n    protected void onActivityResult(int requestCode, int resultCode, Intent data) {\n        super.onActivityResult(requestCode, resultCode, data);\n        if (requestCode == FILE_CHOOSER_REQUEST) {\n            if (filePathCallback == null) return;\n            Uri[] results = null;\n            if (resultCode == RESULT_OK && data != null) {\n                if (data.getData() != null) results = new Uri[]{data.getData()};\n                else if (data.getClipData() != null) {\n                    int count = data.getClipData().getItemCount();\n                    results = new Uri[count];\n                    for (int i = 0; i < count; i++) results[i] = data.getClipData().getItemAt(i).getUri();\n                }\n            }\n            filePathCallback.onReceiveValue(results);\n            filePathCallback = null;\n        }\n    }\n\n'''
+          if marker in s and 'protected void onActivityResult(int requestCode' not in s:
+              s = s.replace(marker, result + marker)
           p.write_text(s)
-          print('Sélecteur photo Android natif corrigé.')
           PY
 
       - name: Corriger les boutons photo CRVT
@@ -65,47 +62,93 @@ jobs:
               s = path.read_text()
               s = s.replace('''<label class="btn primary photoBtn">📷 Prendre une photo\n    <input type="file" accept="image/*" capture="environment" data-photo="${sec}">\n  </label>\n  <label class="btn secondary photoBtn">🖼️ Choisir dans la galerie\n    <input type="file" accept="image/*" data-photo="${sec}">\n  </label>''', '''<button type="button" class="btn primary photoBtn" onclick="choosePhoto('${sec}',true)">📷 Prendre une photo</button>\n  <button type="button" class="btn secondary photoBtn" onclick="choosePhoto('${sec}',false)">🖼️ Choisir dans la galerie</button>''')
               anchor = 'function bindPhotoInputs(){'
-              helper = '''function choosePhoto(sec,camera){\n  const input=document.createElement('input');\n  input.type='file';\n  input.accept='image/*';\n  if(camera) input.setAttribute('capture','environment');\n  input.style.position='fixed';\n  input.style.left='-9999px';\n  input.style.width='1px';\n  input.style.height='1px';\n  input.onchange=()=>{if(input.files && input.files[0]) addPhoto(input.files[0],sec); input.remove();};\n  document.body.appendChild(input);\n  input.click();\n}\n\n'''
+              helper = '''function choosePhoto(sec,camera){\n  const input=document.createElement('input');\n  input.type='file'; input.accept='image/*';\n  if(camera) input.setAttribute('capture','environment');\n  input.style.position='fixed'; input.style.left='-9999px';\n  input.onchange=()=>{if(input.files && input.files[0]) addPhoto(input.files[0],sec); input.remove();};\n  document.body.appendChild(input); input.click();\n}\n\n'''
               if anchor in s and 'function choosePhoto(sec,camera)' not in s:
                   s = s.replace(anchor, helper + anchor, 1)
-              s = s.replace('''.photoBtn{position:relative;overflow:hidden;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}.photoBtn{position:relative;z-index:30;touch-action:manipulation;-webkit-tap-highlight-color:transparent}.photoBtn input{position:absolute;inset:0;width:100%;height:100%;opacity:0.01;z-index:31;cursor:pointer;pointer-events:auto}''', '''.photoBtn{position:relative;z-index:30;touch-action:manipulation;-webkit-tap-highlight-color:transparent;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}''')
-              s = s.replace('''#quickNav{position:fixed;top:env(safe-area-inset-top,0px);left:0;right:0;z-index:250;''', '''#quickNav{position:fixed;top:env(safe-area-inset-top,0px);left:0;right:0;z-index:120;''')
               path.write_text(s)
-              print('Boutons photo corrigés :', path)
           PY
 
-      - name: Améliorer les annotations et le rapport mobile
+      - name: Corriger annotations et rapport PDF mobile
         run: |
           python3 - <<'PY'
           from pathlib import Path
           for path in Path('crvt').rglob('index.html'):
               s = path.read_text()
-              old = '.modal{position:fixed;inset:0;background:#000d;z-index:100;padding:8px}.modalbox{height:100%;display:flex;flex-direction:column;gap:8px}.canvaswrap{'
-              new = '.modal{position:fixed;inset:0;background:#000d;z-index:1000;padding:8px;overflow:hidden}.modalbox{height:100%;display:flex;flex-direction:column;gap:8px;min-height:0}.tools{max-height:42vh;overflow-y:auto;flex:0 0 auto;padding:8px;background:#f8fafc;border-radius:12px;border:1px solid #cbd5e1;align-content:flex-start;overscroll-behavior:contain}.canvaswrap{'
-              if old in s:
-                  s = s.replace(old,new,1)
-              else:
-                  print('Avertissement: CSS modal cible absente:',path)
-              old = '.tools{display:flex;gap:6px;flex-wrap:wrap}.tools .btn{flex:none}'
-              new = '.tools{display:flex;gap:6px;flex-wrap:wrap}.tools .btn{flex:none}.tools select{flex:none;min-height:42px}.tools .btn.active{outline:3px solid #0b6e9e;outline-offset:1px}.tools::-webkit-scrollbar{width:8px}.tools::-webkit-scrollbar-thumb{background:#94a3b8;border-radius:8px}'
-              if old in s:
-                  s = s.replace(old,new,1)
-              old = 'let w=openWindow?window.open("","_blank"):null;\nif(openWindow && !w){toast("Autorise les fenêtres pop-up pour générer le rapport");return null}'
-              new = 'let w=openWindow?window.open("","_blank"):null;\nif(openWindow && !w){ w=window; }'
-              if old in s:
-                  s = s.replace(old,new,1)
-              else:
-                  print('Avertissement: fallback rapport déjà différent:',path)
-              old = '<body>${pages.join("")}<button id="printBtn" disabled>🖨️ Imprimer / Enregistrer en PDF</button>'
-              new = '<body>${pages.join("")}<button id="backCrvtBtn" onclick="location.reload()">↩ Retour à CRVT</button><button id="printBtn" disabled>🖨️ Imprimer / Enregistrer en PDF</button>'
-              if old in s:
-                  s = s.replace(old,new,1)
-              old = 'button:disabled{opacity:.55;cursor:wait}'
-              new = '#backCrvtBtn{left:18px;right:auto;background:#fff;color:#0b6e9e;border:1px solid #94a3b8}button:disabled{opacity:.55;cursor:wait}'
-              if old in s:
-                  s = s.replace(old,new,1)
+
+              # Le panneau d'outils ne doit jamais recouvrir la zone de dessin.
+              css = '''
+<style id="crvt-mobile-fixes">
+@media (max-width:700px){
+  .modal{position:fixed!important;inset:0!important;padding:6px!important;overflow:hidden!important;z-index:1000!important}
+  .modalbox{height:100%!important;min-height:0!important;display:flex!important;flex-direction:column!important;gap:6px!important}
+  .tools{position:relative!important;z-index:5!important;flex:0 0 auto!important;max-height:27vh!important;min-height:0!important;overflow-y:auto!important;overflow-x:hidden!important;padding:6px!important;box-sizing:border-box!important}
+  .tools .btn{min-height:38px!important;max-height:44px!important}
+  .tools select{min-height:38px!important}
+  .canvaswrap{position:relative!important;z-index:1!important;flex:1 1 auto!important;min-height:0!important;overflow:auto!important;margin:0!important;padding:0!important}
+  .canvaswrap canvas{display:block!important;max-width:100%!important}
+  #quickNav{z-index:110!important}
+}
+#crvtPdfFallback{position:fixed;right:12px;bottom:12px;z-index:5000;background:#0b6e9e;color:#fff;border:0;border-radius:12px;padding:12px 16px;font-weight:700;box-shadow:0 3px 12px #0005}
+</style>
+'''
+              if 'id="crvt-mobile-fixes"' not in s:
+                  s = s.replace('</head>', css + '</head>', 1)
+
+              # Ajouter un vrai bouton d'impression qui reste utilisable même si une popup est bloquée.
+              js = r'''
+<script id="crvt-report-fix">
+(function(){
+  function label(el){ return ((el && (el.innerText || el.textContent || el.value)) || '').replace(/\s+/g,' ').trim().toLowerCase(); }
+  function reportControls(){
+    return Array.from(document.querySelectorAll('button,a,[role="button"],input[type="button"],input[type="submit"]'))
+      .filter(function(el){ return /pdf|rapport|compte rendu|imprimer|générer/.test(label(el)); });
+  }
+  function makePrintableCurrentPage(){
+    try {
+      var w = window.open('', '_blank');
+      if(!w) w = window;
+      if(w === window){ window.print(); return; }
+      var html = '<!doctype html><html><head><meta charset="utf-8"><title>Compte rendu de visite technique</title><style>@page{size:A4;margin:10mm}body{font-family:Arial,sans-serif;margin:0}img{max-width:100%;height:auto}button{display:none!important}</style></head><body>' + document.body.innerHTML + '</body></html>';
+      w.document.open(); w.document.write(html); w.document.close();
+      setTimeout(function(){ try{w.focus();w.print();}catch(e){} }, 700);
+    } catch(e){ try{window.print();}catch(x){} }
+  }
+  function addFallback(){
+    if(document.getElementById('crvtPdfFallback')) return;
+    var b=document.createElement('button'); b.id='crvtPdfFallback'; b.type='button'; b.textContent='📄 PDF / Imprimer';
+    b.addEventListener('click',function(){
+      var controls=reportControls();
+      var target=controls.find(function(el){return /générer|rapport|pdf/.test(label(el)) && el!==b;});
+      if(target){ target.dataset.crvtOriginalClick='1'; target.click(); setTimeout(function(){ if(!document.querySelector('iframe[src],embed[type="application/pdf"]')) makePrintableCurrentPage(); },1200); }
+      else makePrintableCurrentPage();
+    });
+    document.body.appendChild(b);
+  }
+  function observe(){
+    addFallback();
+    var mo=new MutationObserver(function(){addFallback();});
+    mo.observe(document.documentElement,{childList:true,subtree:true});
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',observe); else observe();
+})();
+</script>
+'''
+              if 'id="crvt-report-fix"' not in s:
+                  s = s.replace('</body>', js + '</body>', 1)
+
               path.write_text(s)
-              print('Annotations + rapport mobile corrigés :',path)
+              print('Corrections mobiles appliquées :', path)
+          PY
+
+      - name: Diagnostiquer les contrôles PDF et annotations
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          for p in Path('crvt').rglob('index.html'):
+              s=p.read_text()
+              print('===',p,'===')
+              for token in ['PDF','pdf','rapport','printBtn','generateReport','window.print','canvaswrap','.tools']:
+                  print(token, s.lower().count(token.lower()))
           PY
 
       - name: Activer AndroidX et corriger Kotlin
@@ -120,16 +163,8 @@ jobs:
         run: |
           SETTINGS=$(find crvt -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" \) | head -n 1)
           BUILD=$(find crvt -type f \( -name "build.gradle" -o -name "build.gradle.kts" \) | head -n 1)
-          if [ -n "$SETTINGS" ]; then
-            PROJECT_DIR=$(dirname "$SETTINGS")
-          elif [ -n "$BUILD" ]; then
-            PROJECT_DIR=$(dirname "$BUILD")
-          else
-            echo "ERREUR : aucun projet Gradle trouvé dans le ZIP."
-            exit 1
-          fi
+          if [ -n "$SETTINGS" ]; then PROJECT_DIR=$(dirname "$SETTINGS"); elif [ -n "$BUILD" ]; then PROJECT_DIR=$(dirname "$BUILD"); else exit 1; fi
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-          echo "Projet Android trouvé dans : $PROJECT_DIR"
 
       - name: Construire l'APK
         run: |
@@ -145,14 +180,11 @@ jobs:
           gradle -I /tmp/crvt-kotlin-fix.gradle assembleDebug --no-daemon --refresh-dependencies
 
       - name: Vérifier l'APK
-        run: |
-          echo "=== APK PRODUITS ==="
-          find crvt -type f -name "*.apk" -print
+        run: find crvt -type f -name '*.apk' -print
 
       - name: Récupérer l'APK
         uses: actions/upload-artifact@v4
         with:
           name: CRVT-APK
-          path: |
-            crvt/**/build/outputs/apk/**/*.apk
+          path: crvt/**/build/outputs/apk/**/*.apk
           if-no-files-found: error
