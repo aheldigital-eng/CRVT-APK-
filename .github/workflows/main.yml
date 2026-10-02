@@ -36,30 +36,12 @@ jobs:
 
       - name: Corriger l'interface mobile CRVT
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          for p in Path('crvt').rglob('index.html'):
-              s = p.read_text(encoding='utf-8')
-              s = s.replace('#quickNav{position:fixed;top:0;', '#quickNav{position:fixed;top:env(safe-area-inset-top,0px);')
-              s = s.replace('body{padding-top:54px}', 'body{padding-top:calc(54px + env(safe-area-inset-top,0px))}')
-              s = s.replace('.photoBtn input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}', '.photoBtn{position:relative;z-index:30;touch-action:manipulation;-webkit-tap-highlight-color:transparent}.photoBtn input{position:absolute;inset:0;width:100%;height:100%;opacity:0.01;z-index:31;cursor:pointer;pointer-events:auto}')
-              marker='</script>'
-              js="""
-<script>
-document.addEventListener('click', function(e){
-  const b=e.target.closest('.photoBtn');
-  if(!b)return;
-  const i=b.querySelector('input[type=file]');
-  if(i && e.target!==i){ e.preventDefault(); i.click(); }
-});
-</script>
-"""
-              if 'const i=b.querySelector' not in s:
-                  pos=s.rfind(marker)
-                  if pos!=-1: s=s[:pos]+js+s[pos:]
-              p.write_text(s,encoding='utf-8')
-              print('Interface corrigée:',p)
-          PY
+          find crvt -type f -name 'index.html' -print0 | while IFS= read -r -d '' f; do
+            sed -i 's/#quickNav{position:fixed;top:0;/#quickNav{position:fixed;top:env(safe-area-inset-top,0px);/' "$f"
+            sed -i 's/body{padding-top:54px}/body{padding-top:calc(54px + env(safe-area-inset-top,0px))}/' "$f"
+            sed -i 's/\.photoBtn input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}/.photoBtn{position:relative;z-index:30;touch-action:manipulation;-webkit-tap-highlight-color:transparent}.photoBtn input{position:absolute;inset:0;width:100%;height:100%;opacity:0.01;z-index:31;cursor:pointer;pointer-events:auto}/' "$f"
+            echo "Interface mobile corrigée : $f"
+          done
 
       - name: Activer AndroidX et préparer Kotlin
         run: |
@@ -97,12 +79,9 @@ document.addEventListener('click', function(e){
           echo "Construction depuis : $(pwd)"
           GRADLEW=$(find . -maxdepth 2 -type f -name "gradlew" | head -n 1)
           if [ -n "$GRADLEW" ]; then
-            echo "Gradle Wrapper trouvé : $GRADLEW"
             chmod +x "$GRADLEW"
             "$GRADLEW" assembleDebug --no-daemon
           else
-            echo "Pas de gradlew."
-            echo "Utilisation de Gradle installé par GitHub Actions."
             gradle assembleDebug --no-daemon
           fi
 
