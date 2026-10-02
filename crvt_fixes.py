@@ -73,25 +73,72 @@ header,nav,.header,.topbar,.app-header,.appbar,.navbar,.tabs,.steps,.stepbar,.to
     elif '</head>' in s:
         s = s.replace('</head>', css + '</head>', 1)
 
+    # Keep the application alive while showing the generated report. The old
+    # implementation used document.open()/document.write(), which destroyed
+    # the app DOM and left the user trapped on the report. The new viewer is
+    # an in-app overlay with an iframe, explicit close/back, and print action.
     js = r'''<script id="crvt-report-fix">
 (function(){
-function getReport(){try{if(typeof window.reportHtml==='function'){var h=window.reportHtml();if(typeof h==='string'&&h.indexOf('<')>=0)return h;}}catch(e){}return null;}
+var reportOverlay=null, reportFrame=null;
+function getReport(){
+  try{
+    if(typeof window.reportHtml==='function'){
+      var h=window.reportHtml();
+      if(typeof h==='string'&&h.indexOf('<')>=0)return h;
+    }
+  }catch(e){}
+  return null;
+}
+function closeReport(){
+  if(reportOverlay){reportOverlay.remove();reportOverlay=null;reportFrame=null;document.body.style.overflow='';}
+}
 function printReport(){
   var html=getReport();
   if(!html){try{window.print();}catch(e){}return;}
-  try{
-    var old=document.documentElement.innerHTML;
-    document.open();
-    document.write(html);
-    document.close();
-    setTimeout(function(){try{window.focus();window.print();}catch(e){}},800);
-  }catch(e){try{window.print();}catch(x){}}
+  if(!reportOverlay)showReport();
+  setTimeout(function(){
+    try{
+      if(reportFrame&&reportFrame.contentWindow){
+        reportFrame.contentWindow.focus();
+        reportFrame.contentWindow.print();
+      }else window.print();
+    }catch(e){try{window.print();}catch(x){}}
+  },500);
+}
+function showReport(){
+  var html=getReport();
+  if(!html){try{window.print();}catch(e){}return;}
+  closeReport();
+  reportOverlay=document.createElement('div');
+  reportOverlay.id='crvtReportOverlay';
+  reportOverlay.style.cssText='position:fixed;inset:0;z-index:2147483646;background:#fff;display:flex;flex-direction:column;padding-top:max(8px,env(safe-area-inset-top));padding-bottom:max(8px,env(safe-area-inset-bottom));';
+  var bar=document.createElement('div');
+  bar.style.cssText='height:54px;flex:0 0 54px;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 10px;background:#0b6e9e;color:#fff;font-weight:700;';
+  var title=document.createElement('div');title.textContent='Compte rendu de visite technique';title.style.cssText='font-size:15px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;';
+  var actions=document.createElement('div');actions.style.cssText='display:flex;gap:7px;';
+  var back=document.createElement('button');back.type='button';back.textContent='← Retour';back.style.cssText='border:0;border-radius:9px;padding:9px 11px;background:#fff;color:#123;font-weight:700;';back.onclick=closeReport;
+  var pr=document.createElement('button');pr.type='button';pr.textContent='📄 PDF / Imprimer';pr.style.cssText='border:0;border-radius:9px;padding:9px 11px;background:#0a5276;color:#fff;font-weight:700;';pr.onclick=printReport;
+  actions.appendChild(back);actions.appendChild(pr);bar.appendChild(title);bar.appendChild(actions);
+  reportFrame=document.createElement('iframe');
+  reportFrame.id='crvtReportFrame';reportFrame.title='Rapport CRVT';reportFrame.style.cssText='border:0;display:block;flex:1 1 auto;width:100%;height:100%;background:#fff;';
+  reportFrame.setAttribute('sandbox','allow-same-origin allow-modals allow-scripts');
+  reportOverlay.appendChild(bar);reportOverlay.appendChild(reportFrame);document.body.appendChild(reportOverlay);document.body.style.overflow='hidden';
+  try{reportFrame.srcdoc=html;}catch(e){reportFrame.contentDocument.open();reportFrame.contentDocument.write(html);reportFrame.contentDocument.close();}
 }
 function install(){
   var old=document.getElementById('crvtPdfFallback');if(old)old.remove();
-  document.addEventListener('click',function(e){var el=e.target&&e.target.closest?e.target.closest('button,a,[role="button"]'):null;if(!el)return;var t=(el.innerText||el.textContent||'').replace(/\s+/g,' ').trim().toLowerCase();if(t.indexOf('pdf')>=0&&t.indexOf('imprim')>=0){e.preventDefault();e.stopImmediatePropagation();printReport();}},true);
-  if(!document.querySelector('button[data-crvt-pdf],#crvtPdfFallback')){var b=document.createElement('button');b.id='crvtPdfFallback';b.type='button';b.dataset.crvtPdf='1';b.textContent='📄 PDF / Imprimer';b.style.cssText='position:fixed;right:12px;bottom:max(12px,env(safe-area-inset-bottom));z-index:2147482000;background:#0b6e9e;color:#fff;border:0;border-radius:12px;padding:13px 16px;font-weight:700;box-shadow:0 3px 12px #0005;touch-action:manipulation';b.addEventListener('click',printReport);document.body.appendChild(b);}
+  document.addEventListener('click',function(e){
+    var el=e.target&&e.target.closest?e.target.closest('button,a,[role="button"]'):null;if(!el)return;
+    var t=(el.innerText||el.textContent||'').replace(/\s+/g,' ').trim().toLowerCase();
+    if(t.indexOf('pdf')>=0&&t.indexOf('imprim')>=0){e.preventDefault();e.stopImmediatePropagation();showReport();}
+  },true);
+  if(!document.querySelector('#crvtPdfFallback')){
+    var b=document.createElement('button');b.id='crvtPdfFallback';b.type='button';b.textContent='📄 PDF / Imprimer';
+    b.style.cssText='position:fixed;right:12px;bottom:max(12px,env(safe-area-inset-bottom));z-index:2147482000;background:#0b6e9e;color:#fff;border:0;border-radius:12px;padding:13px 16px;font-weight:700;box-shadow:0 3px 12px #0005;touch-action:manipulation';
+    b.addEventListener('click',function(e){e.preventDefault();showReport();});document.body.appendChild(b);
+  }
 }
+window.addEventListener('popstate',function(){if(reportOverlay)closeReport();});
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install);else install();
 })();
 </script>'''
