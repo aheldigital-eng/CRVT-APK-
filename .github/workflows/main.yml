@@ -43,28 +43,18 @@ jobs:
             echo "Interface mobile corrigée : $f"
           done
 
-      - name: Activer AndroidX et forcer Kotlin 1.8.22
+      - name: Activer AndroidX et corriger Kotlin
         run: |
           printf '%s\n' \
             'android.useAndroidX=true' \
             'android.enableJetifier=true' \
             'kotlin.version=1.8.22' \
             > crvt/gradle.properties
-          find crvt -type f \( -name 'build.gradle' -o -name 'build.gradle.kts' \) -print0 | while IFS= read -r -d '' f; do
-            sed -i -E "s/(kotlin_version[[:space:]]*=[[:space:]]*['\"])1\.6\.21(['\"])/\1 1.8.22\2/; s/(org\.jetbrains\.kotlin:kotlin-stdlib[^:]*:)[0-9.]+/\11.8.22/g; s/(org\.jetbrains\.kotlin:kotlin-stdlib-jdk[78]:)[0-9.]+/\11.8.22/g" "$f"
-          done
 
       - name: Trouver le projet Android
         run: |
-          echo "=== CONTENU DU ZIP ==="
-          find crvt -maxdepth 4 -type f | head -200
-          echo "=== RECHERCHE DU PROJET ANDROID ==="
           SETTINGS=$(find crvt -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" \) | head -n 1)
           BUILD=$(find crvt -type f \( -name "build.gradle" -o -name "build.gradle.kts" \) | head -n 1)
-          GRADLEW=$(find crvt -type f -name "gradlew" | head -n 1)
-          echo "settings.gradle : $SETTINGS"
-          echo "build.gradle    : $BUILD"
-          echo "gradlew         : $GRADLEW"
           if [ -n "$SETTINGS" ]; then
             PROJECT_DIR=$(dirname "$SETTINGS")
           elif [ -n "$BUILD" ]; then
@@ -79,14 +69,16 @@ jobs:
       - name: Construire l'APK
         run: |
           cd "$PROJECT_DIR"
-          echo "Construction depuis : $(pwd)"
-          GRADLEW=$(find . -maxdepth 2 -type f -name "gradlew" | head -n 1)
-          if [ -n "$GRADLEW" ]; then
-            chmod +x "$GRADLEW"
-            "$GRADLEW" assembleDebug --no-daemon
-          else
-            gradle assembleDebug --no-daemon
-          fi
+          cat > /tmp/crvt-kotlin-fix.gradle <<'EOF'
+          allprojects {
+            configurations.configureEach {
+              exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'
+              exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'
+            }
+          }
+          EOF
+          echo "Exclusion des anciens kotlin-stdlib-jdk7/jdk8 pour éviter les classes dupliquées"
+          gradle -I /tmp/crvt-kotlin-fix.gradle assembleDebug --no-daemon --refresh-dependencies
 
       - name: Vérifier l'APK
         run: |
