@@ -34,6 +34,15 @@ jobs:
           mkdir -p crvt
           unzip -o CRVT_APK_CLOUD_BUILD.zip -d crvt
 
+      - name: Diagnostiquer le sélecteur photo Android
+        run: |
+          echo "=== FICHIERS WEBVIEW / ACTIVITÉ ==="
+          grep -RIl --include='*.kt' --include='*.java' 'WebView' crvt | head -20 || true
+          echo "=== REFERENCES FILE CHOOSER ==="
+          grep -RInE --include='*.kt' --include='*.java' 'WebChromeClient|onShowFileChooser|setWebChromeClient|FileChooser|ACTION_GET_CONTENT|ACTION_OPEN_DOCUMENT' crvt || true
+          echo "=== MANIFEST ==="
+          find crvt -name AndroidManifest.xml -print -exec sed -n '1,220p' {} \;
+
       - name: Corriger l'interface mobile CRVT
         run: |
           find crvt -type f -name 'index.html' -print0 | while IFS= read -r -d '' f; do
