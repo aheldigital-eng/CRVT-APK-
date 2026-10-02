@@ -43,13 +43,16 @@ jobs:
             echo "Interface mobile corrigée : $f"
           done
 
-      - name: Activer AndroidX et préparer Kotlin
+      - name: Activer AndroidX et forcer Kotlin 1.8.22
         run: |
           printf '%s\n' \
             'android.useAndroidX=true' \
             'android.enableJetifier=true' \
             'kotlin.version=1.8.22' \
             > crvt/gradle.properties
+          find crvt -type f \( -name 'build.gradle' -o -name 'build.gradle.kts' \) -print0 | while IFS= read -r -d '' f; do
+            sed -i -E "s/(kotlin_version[[:space:]]*=[[:space:]]*['\"])1\.6\.21(['\"])/\1 1.8.22\2/; s/(org\.jetbrains\.kotlin:kotlin-stdlib[^:]*:)[0-9.]+/\11.8.22/g; s/(org\.jetbrains\.kotlin:kotlin-stdlib-jdk[78]:)[0-9.]+/\11.8.22/g" "$f"
+          done
 
       - name: Trouver le projet Android
         run: |
