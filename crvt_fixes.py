@@ -1,12 +1,13 @@
 from pathlib import Path
 
-# Android natif: photo/camera/gallery chooser
+# Android: photo/camera/gallery chooser for WebView
 p = Path('crvt/app/src/main/java/fr/crvt/app/MainActivity.java')
 if p.exists():
     s = p.read_text()
     s = s.replace('import android.app.Activity;\n', 'import android.app.Activity;\nimport android.content.ActivityNotFoundException;\nimport android.content.Intent;\nimport android.net.Uri;\n')
     s = s.replace('import android.webkit.WebChromeClient;\n', 'import android.webkit.WebChromeClient;\nimport android.webkit.ValueCallback;\n')
-    s = s.replace('    private static final int CAMERA_REQUEST = 1001;\n', '    private static final int CAMERA_REQUEST = 1001;\n    private static final int FILE_CHOOSER_REQUEST = 1002;\n    private ValueCallback<Uri[]> filePathCallback;\n')
+    if 'FILE_CHOOSER_REQUEST' not in s:
+        s = s.replace('    private static final int CAMERA_REQUEST = 1001;\n', '    private static final int CAMERA_REQUEST = 1001;\n    private static final int FILE_CHOOSER_REQUEST = 1002;\n    private ValueCallback<Uri[]> filePathCallback;\n')
     old = '        webView.setWebChromeClient(new WebChromeClient());'
     new = """        webView.setWebChromeClient(new WebChromeClient() {
             @Override
@@ -53,50 +54,38 @@ if p.exists():
 for path in Path('crvt').rglob('index.html'):
     s = path.read_text()
 
-    # Keep the annotation toolbar inside the modal layout and give the image/canvas the remaining space.
-    css = """<style id="crvt-mobile-fixes">
+    # Mobile annotation modal: never hide it below the CRVT header; keep the
+    # complete toolbar and bottom actions reachable by scrolling the toolbar.
+    css = r'''<style id="crvt-mobile-fixes">
+*{box-sizing:border-box}
 @media(max-width:700px){
-.modal{position:fixed!important;inset:0!important;padding:6px!important;overflow:hidden!important;z-index:1000!important}
-.modalbox{height:100%!important;min-height:0!important;display:flex!important;flex-direction:column!important;gap:6px!important}
-.tools{position:relative!important;z-index:5!important;flex:0 0 auto!important;max-height:27vh!important;min-height:0!important;overflow-y:auto!important;overflow-x:hidden!important;padding:6px!important;box-sizing:border-box!important}
-.tools .btn{min-height:38px!important;max-height:44px!important}
-.tools select{min-height:38px!important}
-.canvaswrap{position:relative!important;z-index:1!important;flex:1 1 auto!important;min-height:0!important;overflow:auto!important;margin:0!important;padding:0!important}
+.modal{position:fixed!important;top:0!important;left:0!important;right:0!important;bottom:0!important;width:100vw!important;height:100dvh!important;min-height:100dvh!important;margin:0!important;padding:max(8px,env(safe-area-inset-top)) 6px max(8px,env(safe-area-inset-bottom)) 6px!important;overflow:hidden!important;z-index:2147483000!important;transform:none!important;isolation:isolate!important}
+.modalbox{width:100%!important;height:100%!important;min-height:0!important;display:flex!important;flex-direction:column!important;gap:5px!important;overflow:hidden!important}
+.tools{position:relative!important;z-index:20!important;flex:0 0 auto!important;width:100%!important;max-height:39dvh!important;min-height:0!important;overflow-y:auto!important;overflow-x:hidden!important;padding:5px!important;margin:0!important;overscroll-behavior:contain!important}
+.tools .btn,.tools button{min-height:40px!important;max-height:52px!important;touch-action:manipulation!important}
+.tools select{min-height:40px!important;touch-action:manipulation!important}
+.canvaswrap{position:relative!important;z-index:10!important;flex:1 1 auto!important;min-height:0!important;width:100%!important;overflow:auto!important;margin:0!important;padding:0!important;-webkit-overflow-scrolling:touch!important}
+.canvaswrap canvas,.canvaswrap img{max-width:100%!important}
 }
-</style>"""
+</style>'''
     if 'crvt-mobile-fixes' not in s and '</head>' in s:
         s = s.replace('</head>', css + '</head>', 1)
 
-    # Add an always-visible PDF/print fallback for Android WebView.
-    js = """<script id="crvt-report-fix">
+    # Real report printing: use the application's complete reportHtml() instead
+    # of cloning the live screen. This fixes the incomplete/malformed PDF.
+    js = r'''<script id="crvt-report-fix">
 (function(){
-  function printable(){
-    try{
-      var w=window.open('','_blank');
-      if(!w){window.print();return;}
-      var body=document.body.cloneNode(true);
-      body.querySelectorAll('button,#crvtPdfFallback').forEach(function(x){x.remove();});
-      w.document.open();
-      w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Compte rendu de visite technique</title><style>@page{size:A4;margin:10mm}body{font-family:Arial,sans-serif}img{max-width:100%;height:auto}</style></head><body>'+body.innerHTML+'</body></html>');
-      w.document.close();
-      setTimeout(function(){try{w.focus();w.print();}catch(e){}},700);
-    }catch(e){try{window.print();}catch(x){}}
-  }
-  function add(){
-    if(document.getElementById('crvtPdfFallback')) return;
-    var b=document.createElement('button');
-    b.id='crvtPdfFallback';
-    b.type='button';
-    b.textContent='📄 PDF / Imprimer';
-    b.style.cssText='position:fixed;right:12px;bottom:12px;z-index:5000;background:#0b6e9e;color:#fff;border:0;border-radius:12px;padding:12px 16px;font-weight:700;box-shadow:0 3px 12px #0005';
-    b.addEventListener('click',printable);
-    document.body.appendChild(b);
-  }
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',add); else add();
+function getReport(){try{if(typeof window.reportHtml==='function'){var h=window.reportHtml();if(typeof h==='string'&&h.indexOf('<')>=0)return h;}}catch(e){}return null;}
+function printReport(){var html=getReport();if(!html){try{window.print();}catch(e){}return;}try{var w=window.open('','_blank');if(!w){var f=document.createElement('iframe');f.style.cssText='position:fixed;left:-10000px;top:0;width:1px;height:1px;border:0';document.body.appendChild(f);var d=f.contentDocument||f.contentWindow.document;d.open();d.write(html);d.close();setTimeout(function(){try{f.contentWindow.focus();f.contentWindow.print();}catch(e){}},900);return;}w.document.open();w.document.write(html);w.document.close();setTimeout(function(){try{w.focus();w.print();}catch(e){}},900);}catch(e){try{window.print();}catch(x){}}}
+function install(){var old=document.getElementById('crvtPdfFallback');if(old)old.remove();document.addEventListener('click',function(e){var el=e.target&&e.target.closest?e.target.closest('button,a,[role="button"]'):null;if(!el)return;var t=(el.innerText||el.textContent||'').replace(/\s+/g,' ').trim().toLowerCase();if(t.indexOf('pdf')>=0&&t.indexOf('imprim')>=0){e.preventDefault();e.stopImmediatePropagation();printReport();}},true);if(!document.querySelector('button[data-crvt-pdf],#crvtPdfFallback')){var b=document.createElement('button');b.id='crvtPdfFallback';b.type='button';b.dataset.crvtPdf='1';b.textContent='📄 PDF / Imprimer';b.style.cssText='position:fixed;right:12px;bottom:max(12px,env(safe-area-inset-bottom));z-index:2147482000;background:#0b6e9e;color:#fff;border:0;border-radius:12px;padding:13px 16px;font-weight:700;box-shadow:0 3px 12px #0005;touch-action:manipulation';b.addEventListener('click',printReport);document.body.appendChild(b);}}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install);else install();
 })();
-</script>"""
-    if 'crvt-report-fix' not in s and '</body>' in s:
+</script>'''
+    if 'crvt-report-fix' in s:
+        import re
+        s = re.sub(r'<script id="crvt-report-fix">.*?</script>', js, s, count=1, flags=re.S)
+    elif '</body>' in s:
         s = s.replace('</body>', js + '</body>', 1)
 
     path.write_text(s)
-    print('Corrections CRVT:', path)
+    print('CRVT fixes:', path)
