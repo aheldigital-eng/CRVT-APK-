@@ -39,6 +39,9 @@ jobs:
       - name: Corriger le script du rapport CRVT
         run: python3 crvt_html_syntax_fix.py
 
+      - name: Corriger la génération PDF CRVT
+        run: python3 crvt_pdf_fix.py
+
       - name: Corriger le type WebView Android
         run: |
           python3 - <<'PY'
