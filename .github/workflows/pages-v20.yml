@@ -29,21 +29,17 @@ jobs:
         with:
           enablement: true
 
-      - name: Prepare CRVT web app
+      - name: Prepare CRVT from the validated root index
         run: |
-          rm -rf crvt site
-          mkdir -p crvt site
-          unzip -o CRVT_APK_CLOUD_BUILD.zip -d crvt
-          python3 crvt_fixes.py
-          python3 crvt_html_syntax_fix.py
-          python3 crvt_pdf_fix.py
-          INDEX=$(find crvt -type f -name 'index.html' | head -n 1)
-          if [ -z "$INDEX" ]; then echo "index.html missing in CRVT project"; exit 1; fi
-          SRC_DIR=$(dirname "$INDEX")
-          cp -R "$SRC_DIR"/. site/
-          if [ ! -f site/index.html ]; then echo "site/index.html missing after preparation"; exit 1; fi
-          echo "CRVT web app prepared from validated ZIP"
-          ls -la site | head -50
+          rm -rf site
+          mkdir -p site
+          cp index.html site/index.html
+          if [ ! -s site/index.html ]; then
+            echo "site/index.html is missing or empty"
+            exit 1
+          fi
+          echo "CRVT root index deployed directly"
+          wc -c site/index.html
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
