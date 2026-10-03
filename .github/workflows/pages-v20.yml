@@ -23,10 +23,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
         with:
           enablement: true
+
       - name: Prepare CRVT web app
         run: |
           rm -rf crvt site
@@ -40,15 +42,14 @@ jobs:
           SRC_DIR=$(dirname "$INDEX")
           cp -R "$SRC_DIR"/. site/
           if [ ! -f site/index.html ]; then echo "site/index.html missing after preparation"; exit 1; fi
-          # Use the current validated CRVT index from the repository root.
-          # The ZIP is still extracted first so any supporting assets remain available.
-          cp index.html site/index.html
-          echo "CRVT web app prepared with repository-root index.html"
+          echo "CRVT web app prepared from validated ZIP"
           ls -la site | head -50
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: site
+
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
